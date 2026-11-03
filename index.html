@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Peasy</title>
+<meta name="description" content="Recipeasy: paste a recipe link, scale it, convert units.">
+<meta name="theme-color" content="#f7f3ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1a18" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+  :root {
+    --bg: #f7f3ec; --card: #ffffff; --text: #22201c; --muted: #6b655b;
+    --accent: #c4501b; --accent-text: #ffffff; --line: #e4ddd1; --err: #b3261e;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1b1a18; --card: #262421; --text: #f2ede4; --muted: #a8a094;
+            --accent: #ef7a45; --accent-text: #1b1a18; --line: #3a3732; --err: #f2b8b5; }
+  }
+  * { box-sizing: border-box; }
+  html { font-size: 20px; -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.5;
+         padding: env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 32px); }
+  main { max-width: 680px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; }
+  h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.02em; }
+  h1 span { color: var(--accent); }
+  h2 { font-size: 1.6rem; line-height: 1.2; margin: 0.5rem 0 1rem; }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+  label { display: block; font-weight: 600; margin-bottom: 8px; }
+  input, textarea { width: 100%; font: inherit; color: inherit; background: var(--bg);
+                    border: 2px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  textarea { min-height: 220px; resize: vertical; }
+  button { font: inherit; font-weight: 600; min-height: 52px; min-width: 52px; border-radius: 12px;
+           border: 2px solid var(--line); background: var(--card); color: var(--text); padding: 0 18px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); width: 100%; margin-top: 12px; }
+  button:disabled { opacity: 0.6; cursor: wait; }
+  .muted { color: var(--muted); }
+  .error { color: var(--err); font-weight: 600; }
+  [hidden] { display: none !important; }
+  .hero { width: 100%; max-height: 300px; object-fit: cover; border-radius: 16px; display: block; margin-bottom: 8px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+  .stepper { display: flex; align-items: center; gap: 10px; }
+  .stepper output { font-size: 1.4rem; font-weight: 700; min-width: 2.5ch; text-align: center; }
+  .stepper button { font-size: 1.5rem; padding: 0; width: 56px; }
+  .toggle { display: flex; border: 2px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .toggle button { border: 0; border-radius: 0; min-width: 96px; }
+  .toggle button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+  ul.ing { list-style: none; padding: 0; margin: 0; }
+  ul.ing li { padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 1.1rem; }
+  ul.ing li:last-child { border-bottom: 0; }
+  .qty { font-weight: 700; }
+  .note { color: var(--muted); }
+  ol.steps { padding-left: 1.4rem; margin: 0; }
+  ol.steps li { margin-bottom: 1rem; font-size: 1.1rem; padding-left: 0.3rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Pea<span>sy</span></h1>
+    <button id="back" hidden>New recipe</button>
+  </header>
+
+  <section id="start">
+    <form id="urlForm" class="card">
+      <label for="url">Recipe link</label>
+      <input id="url" type="url" inputmode="url" placeholder="https://..." required autocomplete="off">
+      <button class="primary" type="submit">Get recipe</button>
+    </form>
+    <form id="textForm" class="card" hidden>
+      <label for="text">That site blocked us. Paste the page text instead.</label>
+      <p class="muted">Open the recipe, select all, copy, and paste here.</p>
+      <textarea id="text" required></textarea>
+      <button class="primary" type="submit">Parse pasted text</button>
+    </form>
+    <p id="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <article id="recipe" hidden>
+    <img id="img" class="hero" alt="" referrerpolicy="no-referrer">
+    <h2 id="title"></h2>
+    <div class="card controls">
+      <div class="stepper" aria-label="Servings">
+        <button id="minus" aria-label="Fewer servings">&minus;</button>
+        <output id="servings" aria-live="polite"></output>
+        <button id="plus" aria-label="More servings">+</button>
+        <span id="servLabel" class="muted"></span>
+      </div>
+      <div class="toggle" role="group" aria-label="Units">
+        <button data-sys="imperial">Imperial</button>
+        <button data-sys="metric">Metric</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Ingredients</h3>
+      <ul id="ingredients" class="ing"></ul>
+    </div>
+    <div class="card">
+      <h3>Steps</h3>
+      <ol id="steps" class="steps"></ol>
+    </div>
+    <p class="muted"><a id="source" target="_blank" rel="noopener">Original recipe</a></p>
+  </article>
+</main>
+
+<!-- Pure unit and format logic. tests/units.test.mjs loads this block by its id. -->
+<script id="units">
+const ML_PER_TSP = 4.92892;
+const TSP = { tsp: 1, tbsp: 3, 'fl oz': 6, cup: 48, pint: 96, quart: 192, gallon: 768,
+              ml: 1 / ML_PER_TSP, l: 1000 / ML_PER_TSP };
+const FRACS = [[0, ''], [1/8, '⅛'], [1/4, '¼'], [1/3, '⅓'], [3/8, '⅜'], [1/2, '½'],
+               [5/8, '⅝'], [2/3, '⅔'], [3/4, '¾'], [7/8, '⅞'], [1, '']];
+const NO_PLURAL = new Set(['tsp', 'tbsp', 'fl oz', 'ml', 'l', 'g', 'kg', 'oz', 'lb']);
+
+function fraction(x) {
+  if (x >= 10) return String(Math.round(x));
+  let whole = Math.floor(x);
+  let [v, sym] = FRACS.reduce((a, b) => Math.abs(b[0] - (x - whole)) < Math.abs(a[0] - (x - whole)) ? b : a);
+  if (v === 1) whole += 1;
+  if (!whole && !sym) return String(+x.toFixed(2)); // tiny amounts: show the number, not "0"
+  return (whole || '') + sym;
+}
+
+function decimal(x, unit) {
+  if (unit === 'ml') return String(x < 5.5 ? Math.round(x * 2) / 2 : x < 100 ? Math.round(x / 5) * 5 : Math.round(x / 10) * 10);
+  if (unit === 'g') return String(x < 10 ? +x.toFixed(1) : x < 100 ? Math.round(x) : Math.round(x / 5) * 5);
+  return String(x < 10 ? +x.toFixed(2) : x < 100 ? +x.toFixed(1) : Math.round(x));
+}
+
+// qs: array of amounts (one, or two for a range). Volume converts and promotes; other units pass through.
+// shortcut: imperial volume tops out at cups (a gallon shows as 16 cups); add quart/gallon if recipes need it.
+function convert(qs, unit, system) {
+  const u = (unit || '').toLowerCase();
+  if (!(u in TSP)) return { qs, unit };
+  const tsp = qs.map(q => q * TSP[u]);
+  const top = Math.max(...tsp);
+  if (system === 'metric') {
+    return top * ML_PER_TSP >= 1000 ? { qs: tsp.map(t => t * ML_PER_TSP / 1000), unit: 'l' }
+                                    : { qs: tsp.map(t => t * ML_PER_TSP), unit: 'ml' };
+  }
+  const to = top >= 12 ? 'cup' : top >= 3 ? 'tbsp' : 'tsp';
+  return { qs: tsp.map(t => t / TSP[to]), unit: to };
+}
+
+function plural(unit, q) {
+  if (!unit || q <= 1 || NO_PLURAL.has(unit) || /s$/.test(unit)) return unit || '';
+  return unit + (/(ch|sh)$/.test(unit) ? 'es' : 's');
+}
+
+// Returns "1½ cups" style text for one ingredient at a scale factor, or "" when there is no amount.
+function amount(ing, factor, system) {
+  if (ing.quantity == null) return ing.unit || '';
+  const raw = Array.isArray(ing.quantity) ? ing.quantity : [ing.quantity];
+  const scaled = ing.scalable ? raw.map(q => q * factor) : raw;
+  const { qs, unit } = convert(scaled, ing.unit, system);
+  const fmt = system === 'imperial' ? fraction : q => decimal(q, unit);
+  const shown = qs.map(fmt);
+  // Plural follows the rounded text: 1.01 cups displays as "1", so it reads "1 cup".
+  return `${shown.join('–')} ${plural(unit, shown.at(-1) === '1' ? 1 : Math.max(...qs))}`.trim();
+}
+
+function temps(text, system) {
+  return text.replace(/(\d{2,3})\s*(?:°\s*|degrees?\s+)(F|C)(?:ahrenheit|elsius)?\b/gi, (m, n, u) => {
+    const isF = u.toUpperCase() === 'F';
+    if (system === 'metric' && isF) return Math.round((n - 32) * 5 / 9 / 5) * 5 + '°C';
+    if (system === 'imperial' && !isF) return Math.round((n * 9 / 5 + 32) / 5) * 5 + '°F';
+    return m;
+  });
+}
+</script>
+
+<script>
+const $ = id => document.getElementById(id);
+const state = { recipe: null, servings: 1, base: 1, url: '',
+                system: localStorage.getItem('peasy.system') || 'imperial' };
+let wakeLock = null;
+
+function passcode(reset) {
+  if (reset) localStorage.removeItem('peasy.passcode');
+  let p = localStorage.getItem('peasy.passcode');
+  if (!p) {
+    p = (prompt('Enter the Peasy passcode') || '').trim();
+    if (p) localStorage.setItem('peasy.passcode', p);
+  }
+  return p;
+}
+
+async function callParse(body, retried) {
+  const res = await fetch('/api/parse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Peasy-Passcode': passcode(retried) },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({ error: `Server error ${res.status}.` }));
+  if (res.status === 401 && !retried) return callParse(body, true);
+  if (!res.ok) throw Object.assign(new Error(data.error || `Error ${res.status}`), data);
+  return data;
+}
+
+async function submit(form, body) {
+  const btn = form.querySelector('button');
+  btn.disabled = true;
+  $('status').className = 'muted';
+  $('status').textContent = 'Reading the recipe. This can take 20 seconds.';
+  try {
+    show(await callParse(body));
+    $('status').textContent = '';
+  } catch (e) {
+    $('status').className = 'error';
+    $('status').textContent = e.message;
+    if (e.fetch_failed) { $('textForm').hidden = false; $('text').focus(); }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$('urlForm').addEventListener('submit', e => {
+  e.preventDefault();
+  state.url = $('url').value.trim();
+  $('textForm').hidden = true;
+  submit(e.target, { url: state.url });
+});
+$('textForm').addEventListener('submit', e => {
+  e.preventDefault();
+  submit(e.target, { text: $('text').value });
+});
+
+function show(recipe) {
+  state.recipe = recipe;
+  state.base = recipe.servings || 1;
+  state.servings = state.base;
+  $('title').textContent = recipe.title;
+  $('servLabel').textContent = recipe.servings ? 'servings' : '× batch';
+  $('img').hidden = !recipe.image;
+  if (recipe.image) $('img').src = recipe.image;
+  $('source').hidden = !state.url;
+  $('source').href = state.url || '#';
+  $('start').hidden = true;
+  $('recipe').hidden = $('back').hidden = false;
+  render();
+  window.scrollTo(0, 0);
+  keepAwake();
+}
+
+function render() {
+  const { recipe, servings, base, system } = state;
+  const factor = servings / base;
+  $('servings').textContent = servings;
+  $('minus').disabled = servings <= 1;
+  document.querySelectorAll('.toggle button').forEach(b => b.setAttribute('aria-pressed', b.dataset.sys === system));
+
+  $('ingredients').replaceChildren(...recipe.ingredients.map(ing => {
+    const li = document.createElement('li');
+    const qty = document.createElement('span');
+    qty.className = 'qty';
+    qty.textContent = amount(ing, factor, system);
+    li.append(qty, (qty.textContent ? ' ' : '') + ing.ingredient);
+    if (ing.note) {
+      const note = document.createElement('span');
+      note.className = 'note';
+      note.textContent = ', ' + ing.note;
+      li.append(note);
+    }
+    return li;
+  }));
+
+  $('steps').replaceChildren(...recipe.steps.map(s => {
+    const li = document.createElement('li');
+    li.textContent = temps(s, system);
+    return li;
+  }));
+}
+
+$('minus').onclick = () => { state.servings = Math.max(1, state.servings - 1); render(); };
+$('plus').onclick = () => { state.servings += 1; render(); };
+document.querySelectorAll('.toggle button').forEach(b => b.onclick = () => {
+  state.system = b.dataset.sys;
+  localStorage.setItem('peasy.system', state.system);
+  render();
+});
+$('back').onclick = () => {
+  $('recipe').hidden = $('back').hidden = true;
+  $('start').hidden = false;
+  $('url').value = $('text').value = '';
+  if (wakeLock) wakeLock.release().catch(() => {});
+  wakeLock = null;
+};
+
+async function keepAwake() {
+  if (!('wakeLock' in navigator) || $('recipe').hidden || document.visibilityState !== 'visible') return;
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch { /* denied or low battery: not fatal */ }
+}
+// The browser drops the lock when the tab is hidden; take it again on return.
+document.addEventListener('visibilitychange', keepAwake);
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+</script>
+</body>
+</html>
